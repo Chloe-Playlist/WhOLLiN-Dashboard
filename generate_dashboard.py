@@ -104,7 +104,8 @@ def fetch_cover_songs(creds):
 
     except Exception as e:
         print(f"  ⚠️  커버곡 시트 읽기 실패: {e}")
-        return []
+        # 폴백: 멤버 이름만 표시
+        return [{"name": kr, "en": en, "cover": "미정"} for kr, en in MEMBER_EN.items()]
 
 # ── 마크다운 파싱
 def parse_current(md, members_cover):
