@@ -5,16 +5,156 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>WhOLLiN Dashboard</title>
 <style>
-  body { font-family: sans-serif; display: flex; align-items: center; justify-content: center; height: 100vh; background: #111; color: white; margin: 0; }
-  .msg { text-align: center; }
-  h1 { font-size: 28px; margin-bottom: 8px; }
-  p { color: #aaa; font-size: 14px; }
+  :root { color-scheme: light; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, 'Noto Sans KR', sans-serif;
+    background: #f8f8f8;
+    color: #1a1a1a;
+    font-size: 14px;
+    line-height: 1.6;
+    padding: 20px;
+    max-width: 900px;
+    margin: 0 auto;
+  }
+  .header {
+    background: #111;
+    color: white;
+    border-radius: 10px;
+    padding: 20px 24px;
+    margin-bottom: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .header h1 { font-size: 22px; font-weight: 800; letter-spacing: -0.5px; }
+  .header .meta { font-size: 12px; color: #aaa; margin-top: 4px; }
+  .dday {
+    background: white;
+    color: #111;
+    border-radius: 8px;
+    padding: 8px 16px;
+    text-align: center;
+  }
+  .dday .num { font-size: 28px; font-weight: 800; line-height: 1; }
+  .dday .label { font-size: 10px; color: #888; margin-top: 2px; }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 14px; }
+  @media (max-width: 600px) { .grid { grid-template-columns: 1fr; } }
+  .card {
+    background: white;
+    border-radius: 10px;
+    padding: 14px 16px;
+    border: 1px solid #e8e8e8;
+  }
+  .card-title {
+    font-size: 11px;
+    font-weight: 700;
+    color: #888;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    margin-bottom: 10px;
+  }
+  .priority-item, .confirmed-item, .date-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    padding: 5px 0;
+    font-size: 13px;
+    border-bottom: 1px solid #f5f5f5;
+    line-height: 1.5;
+  }
+  .priority-item:last-child, .confirmed-item:last-child, .date-item:last-child { border-bottom: none; }
+  .dot { width: 7px; height: 7px; border-radius: 50%; background: #ef4444; margin-top: 5px; flex-shrink: 0; }
+  .check { color: #22c55e; font-weight: 700; flex-shrink: 0; font-size: 13px; }
+  .date-tag {
+    background: #111;
+    color: white;
+    font-size: 10px;
+    font-weight: 700;
+    padding: 2px 7px;
+    border-radius: 4px;
+    white-space: nowrap;
+    flex-shrink: 0;
+    margin-top: 2px;
+  }
+  .empty { color: #bbb; font-size: 12px; padding: 8px 0; }
+  .members-grid {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 10px;
+  }
+  @media (max-width: 600px) { .members-grid { grid-template-columns: repeat(3, 1fr); } }
+  .member-card {
+    background: #fafafa;
+    border-radius: 8px;
+    padding: 10px 6px;
+    text-align: center;
+    border: 1px solid #eee;
+  }
+  .member-name { font-size: 13px; font-weight: 700; }
+  .member-en { font-size: 10px; color: #aaa; margin-top: 2px; }
+  .member-cover { font-size: 10px; color: #666; margin-top: 5px; line-height: 1.4; }
+  .updated { text-align: right; font-size: 11px; color: #bbb; margin-top: 10px; }
+  .full-col { grid-column: 1 / -1; }
 </style>
 </head>
 <body>
-<div class="msg">
-  <h1>WhOLLiN</h1>
-  <p>대시보드 준비 중... GitHub Actions가 처음 실행되면 자동으로 업데이트됩니다.</p>
+
+<div class="header">
+  <div>
+    <h1>WhOLLiN</h1>
+    <div class="meta">데뷔 2026-09-01 · TIME SLEEP &nbsp;|&nbsp; 기준 </div>
+  </div>
+  <div class="dday">
+    <div class="label">데뷔까지</div>
+    <div class="num">D-54</div>
+  </div>
 </div>
+
+<div class="grid">
+  <div class="card">
+    <div class="card-title">🔴 최우선 과제</div>
+    <div class="empty">항목 없음</div>
+  </div>
+  <div class="card">
+    <div class="card-title">📅 임박 일정</div>
+    <div class="empty">임박 일정 없음</div>
+  </div>
+  <div class="card">
+    <div class="card-title">✅ 최근 완료</div>
+    <div class="empty">항목 없음</div>
+  </div>
+  <div class="card">
+    <div class="card-title">🎤 멤버 커버곡</div>
+    <div class="members-grid">
+      <div class="member-card">
+          <div class="member-name">시오</div>
+          <div class="member-en">SiO</div>
+          <div class="member-cover">태양 · 눈,코,입</div>
+        </div><div class="member-card">
+          <div class="member-name">태이</div>
+          <div class="member-en">TAEI</div>
+          <div class="member-cover">쥬지 · 바라봐줘요</div>
+        </div><div class="member-card">
+          <div class="member-name">이소</div>
+          <div class="member-en">IISO</div>
+          <div class="member-cover">미세스그린애플 · 아오토나츠</div>
+        </div><div class="member-card">
+          <div class="member-name">이언</div>
+          <div class="member-en">EON</div>
+          <div class="member-cover">카리나 · UP</div>
+        </div><div class="member-card">
+          <div class="member-name">강우</div>
+          <div class="member-en">KANGWOO</div>
+          <div class="member-cover">헤비 · BE I</div>
+        </div>
+    </div>
+  </div>
+</div>
+
+<div class="updated">마지막 업데이트: 2026-07-10 13:47 KST · PLAYLIST WhOLLiN</div>
+
 </body>
 </html>
