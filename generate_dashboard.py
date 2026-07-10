@@ -1,6 +1,7 @@
 """
 WhOLLiN Dashboard Generator
 매일 Google Drive에서 CURRENT.md를 읽어 index.html을 생성합니다.
+커버곡은 음악 레퍼토리 시트에서 동적으로 읽어옵니다.
 히스토리 스냅샷을 history/ 폴더에 JSON으로 저장합니다.
 """
 
@@ -14,20 +15,35 @@ from googleapiclient.http import MediaIoBaseDownload
 import io
 
 # ── 설정
-FILE_ID = "1bHcjkC6TKC6guk-6Cp8sdEpKiTUlZXdr"  # CURRENT.md
-SCOPES = ["https://www.googleapis.com/auth/drive.readonly"]
+CURRENT_MD_ID  = "1bHcjkC6TKC6guk-6Cp8sdEpKiTUlZXdr"
+COVER_SHEET_ID = "12D74nA7JngO5CDWPZPlpLxYX12armPEihleXOuGjM2g"
+COVER_SHEET_GID = 911213125
+
+SCOPES = [
+    "https://www.googleapis.com/auth/drive.readonly",
+    "https://www.googleapis.com/auth/spreadsheets.readonly",
+]
 KST = timezone(timedelta(hours=9))
 
-# ── Google Drive 인증
-def get_drive_service():
+# 멤버 영문명 매핑 (이름은 안 바뀌므로 여기만 유지)
+MEMBER_EN = {
+    "시오": "SiO",
+    "태이": "TAEI",
+    "이소": "IISO",
+    "이언": "EON",
+    "강우": "KANGWOO",
+}
+
+# ── 인증
+def get_credentials():
     key_json = os.environ["GOOGLE_SERVICE_ACCOUNT_KEY"]
     info = json.loads(key_json)
-    creds = service_account.Credentials.from_service_account_info(info, scopes=SCOPES)
-    return build("drive", "v3", credentials=creds)
+    return service_account.Credentials.from_service_account_info(info, scopes=SCOPES)
 
 # ── CURRENT.md 읽기
-def fetch_current_md(service):
-    request = service.files().get_media(fileId=FILE_ID)
+def fetch_current_md(creds):
+    service = build("drive", "v3", credentials=creds)
+    request = service.files().get_media(fileId=CURRENT_MD_ID)
     buf = io.BytesIO()
     downloader = MediaIoBaseDownload(buf, request)
     done = False
@@ -35,8 +51,63 @@ def fetch_current_md(service):
         _, done = downloader.next_chunk()
     return buf.getvalue().decode("utf-8")
 
+# ── 커버곡 시트 읽기
+def fetch_cover_songs(creds):
+    try:
+        sheets = build("sheets", "v4", credentials=creds)
+
+        # gid로 시트 탭 이름 찾기
+        meta = sheets.spreadsheets().get(spreadsheetId=COVER_SHEET_ID).execute()
+        sheet_name = None
+        for s in meta.get("sheets", []):
+            if s["properties"]["sheetId"] == COVER_SHEET_GID:
+                sheet_name = s["properties"]["title"]
+                break
+
+        if not sheet_name:
+            print("  ⚠️  커버곡 시트 탭을 찾을 수 없음. 기본값 사용.")
+            return []
+
+        result = sheets.spreadsheets().values().get(
+            spreadsheetId=COVER_SHEET_ID,
+            range=f"{sheet_name}!A:P"
+        ).execute()
+
+        rows = result.get("values", [])
+        if len(rows) < 2:
+            return []
+
+        headers = [h.strip() for h in rows[0]]
+        covers_by_member = {}
+
+        for row in rows[1:]:
+            row_dict = dict(zip(headers, row + [""] * (len(headers) - len(row))))
+            performer  = row_dict.get("performer_scope", "").strip()
+            song_type  = row_dict.get("song_type", "").strip()
+            song_title = row_dict.get("song_title", "").strip()
+            artist     = row_dict.get("artist_original", "").strip()
+
+            if song_type == "cover" and performer not in ("전체", "") and song_title:
+                covers_by_member[performer] = f"{artist} · {song_title}" if artist else song_title
+
+        # 멤버 순서 유지
+        result_list = []
+        for kr, en in MEMBER_EN.items():
+            result_list.append({
+                "name": kr,
+                "en": en,
+                "cover": covers_by_member.get(kr, "미정"),
+            })
+
+        print(f"  커버곡 {len(covers_by_member)}개 로드됨")
+        return result_list
+
+    except Exception as e:
+        print(f"  ⚠️  커버곡 시트 읽기 실패: {e}")
+        return []
+
 # ── 마크다운 파싱
-def parse_current(md):
+def parse_current(md, members_cover):
     data = {
         "d_day": "?",
         "basis_date": "",
@@ -44,13 +115,7 @@ def parse_current(md):
         "top_priorities": [],
         "recent_confirmed": [],
         "upcoming_dates": [],
-        "members_cover": [
-            {"name": "시오", "en": "SiO", "cover": "태양 · 눈,코,입"},
-            {"name": "태이", "en": "TAEI", "cover": "쥬지 · 바라봐줘요"},
-            {"name": "이소", "en": "IISO", "cover": "미세스그린애플 · 아오토나츠"},
-            {"name": "이언", "en": "EON", "cover": "카리나 · UP"},
-            {"name": "강우", "en": "KANGWOO", "cover": "헤비 · BE I"},
-        ],
+        "members_cover": members_cover,
     }
 
     # D-day 추출
@@ -58,7 +123,7 @@ def parse_current(md):
     if m:
         data["d_day"] = m.group(1)
 
-    # 기준일 추출 (Basis date: YYYY-MM-DD 형식)
+    # 기준일 추출
     m = re.search(r"Basis date:\s*(\d{4}-\d{2}-\d{2})", md)
     if m:
         data["basis_date"] = m.group(1)
@@ -67,7 +132,7 @@ def parse_current(md):
         if m:
             data["basis_date"] = m.group(1)
 
-    # Key Milestones 파싱 → upcoming_dates (YYYY-MM-DD: 이벤트 형식)
+    # Key Milestones → upcoming_dates
     milestone_section = re.search(r"## Key Milestones\n(.*?)(?=\n##|\Z)", md, re.DOTALL)
     if milestone_section:
         items = re.findall(r"-\s+(\d{4})-(\d{2})-(\d{2}):\s+(.+)", milestone_section.group(1))
@@ -90,7 +155,7 @@ def parse_current(md):
             if len(data["top_priorities"]) >= 6:
                 break
 
-    # Confirmed/Changed Decisions → recent_confirmed (확정/완료 태그 항목)
+    # Confirmed/Changed → recent_confirmed
     confirmed_section = re.search(r"## Confirmed.*?\n(.*?)(?=\n##|\Z)", md, re.DOTALL)
     if confirmed_section:
         items = re.findall(r"-\s+`(?:확정|완료)`:\s+(.+?)(?=\n-|\Z)", confirmed_section.group(1), re.DOTALL)
@@ -107,13 +172,11 @@ def parse_current(md):
 def save_history(data, today_str):
     os.makedirs("history", exist_ok=True)
 
-    # 오늘 스냅샷 저장
     snapshot = {k: v for k, v in data.items() if k != "members_cover"}
     snapshot["saved_at"] = today_str
     with open(f"history/{today_str}.json", "w", encoding="utf-8") as f:
         json.dump(snapshot, f, ensure_ascii=False, indent=2)
 
-    # 매니페스트 업데이트
     manifest_path = "history/index.json"
     if os.path.exists(manifest_path):
         with open(manifest_path, "r", encoding="utf-8") as f:
@@ -143,7 +206,6 @@ def render_html(data, today_str):
         for m in data["members_cover"]
     )
 
-    # 오늘 데이터를 JS에 인라인으로 embed
     today_json = json.dumps({
         "d_day": data["d_day"],
         "basis_date": data["basis_date"],
@@ -297,11 +359,11 @@ def render_html(data, today_str):
 <div class="header">
   <div>
     <h1>WhOLLiN</h1>
-    <div class="meta" id="header-meta">데뷔 {data['debut_date']} · TIME SLEEP &nbsp;|&nbsp; 기준 {data['basis_date']}</div>
+    <div class="meta">데뷔 {data['debut_date']} · TIME SLEEP &nbsp;|&nbsp; 기준 {data['basis_date']}</div>
   </div>
   <div class="dday">
     <div class="label">데뷔까지</div>
-    <div class="num" id="dday-num">D-{data['d_day']}</div>
+    <div class="num">D-{data['d_day']}</div>
   </div>
 </div>
 
@@ -310,7 +372,6 @@ def render_html(data, today_str):
   <button class="tab-btn" onclick="switchTab('history')">히스토리</button>
 </div>
 
-<!-- 오늘 탭 -->
 <div id="tab-today" class="tab-panel active">
   <div class="grid" id="today-grid"></div>
   <div class="card" style="margin-bottom:14px">
@@ -319,7 +380,6 @@ def render_html(data, today_str):
   </div>
 </div>
 
-<!-- 히스토리 탭 -->
 <div id="tab-history" class="tab-panel">
   <div class="history-bar">
     <label>날짜 선택</label>
@@ -334,34 +394,22 @@ def render_html(data, today_str):
 
 <script>
 const TODAY_DATA = {today_json};
-const TODAY_STR = "{today_str}";
 
 function renderGrid(data, containerId) {{
   const priorities = (data.top_priorities || []).map(i =>
     `<div class="priority-item"><span class="dot"></span><span>${{i}}</span></div>`
   ).join('') || '<div class="empty">항목 없음</div>';
-
   const confirmed = (data.recent_confirmed || []).map(i =>
     `<div class="confirmed-item"><span class="check">✓</span><span>${{i}}</span></div>`
   ).join('') || '<div class="empty">항목 없음</div>';
-
   const dates = (data.upcoming_dates || []).map(d =>
     `<div class="date-item"><span class="date-tag">${{d.date}}</span><span>${{d.event}}</span></div>`
   ).join('') || '<div class="empty">임박 일정 없음</div>';
 
   document.getElementById(containerId).innerHTML = `
-    <div class="card">
-      <div class="card-title">🔴 최우선 과제</div>
-      ${{priorities}}
-    </div>
-    <div class="card">
-      <div class="card-title">📅 임박 일정</div>
-      ${{dates}}
-    </div>
-    <div class="card">
-      <div class="card-title">✅ 최근 완료</div>
-      ${{confirmed}}
-    </div>
+    <div class="card"><div class="card-title">🔴 최우선 과제</div>${{priorities}}</div>
+    <div class="card"><div class="card-title">📅 임박 일정</div>${{dates}}</div>
+    <div class="card"><div class="card-title">✅ 최근 완료</div>${{confirmed}}</div>
     <div class="card">
       <div class="card-title">📋 기준일</div>
       <div style="font-size:20px;font-weight:800;padding:10px 0">${{data.basis_date || '-'}}</div>
@@ -384,9 +432,7 @@ function loadManifest() {{
     .then(r => r.json())
     .then(dates => {{
       const sel = document.getElementById('history-select');
-      sel.innerHTML = dates.map(d =>
-        `<option value="${{d}}">${{d}}</option>`
-      ).join('');
+      sel.innerHTML = dates.map(d => `<option value="${{d}}">${{d}}</option>`).join('');
       if (dates.length > 0) loadHistory(dates[0]);
     }})
     .catch(() => {{
@@ -405,10 +451,8 @@ function loadHistory(date) {{
     }});
 }}
 
-// 오늘 탭 초기 렌더링
 renderGrid(TODAY_DATA, 'today-grid');
 </script>
-
 </body>
 </html>"""
 
@@ -416,14 +460,17 @@ renderGrid(TODAY_DATA, 'today-grid');
 if __name__ == "__main__":
     today_str = datetime.now(KST).strftime("%Y-%m-%d")
 
-    print("Google Drive 연결 중...")
-    service = get_drive_service()
+    print("Google 인증 중...")
+    creds = get_credentials()
+
+    print("커버곡 시트 읽는 중...")
+    members_cover = fetch_cover_songs(creds)
 
     print("CURRENT.md 읽는 중...")
-    md = fetch_current_md(service)
+    md = fetch_current_md(creds)
 
     print("파싱 중...")
-    data = parse_current(md)
+    data = parse_current(md, members_cover)
     print(f"  D-{data['d_day']} | 우선순위 {len(data['top_priorities'])}개 | 일정 {len(data['upcoming_dates'])}개")
 
     print("히스토리 저장 중...")
