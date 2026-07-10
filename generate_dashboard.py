@@ -57,35 +57,48 @@ def parse_current(md):
     if m:
         data["d_day"] = m.group(1)
 
-    # 기준일 추출
-    m = re.search(r"(\d{4}-\d{2}-\d{2})\(", md)
+    # 기준일 추출 (Basis date: YYYY-MM-DD 형식)
+    m = re.search(r"Basis date:\s*(\d{4}-\d{2}-\d{2})", md)
     if m:
         data["basis_date"] = m.group(1)
+    else:
+        m = re.search(r"source_basis_date:\s*(\d{4}-\d{2}-\d{2})", md)
+        if m:
+            data["basis_date"] = m.group(1)
 
-    # 최우선 섹션 파싱
-    priority_section = re.search(r"최우선.*?\n(.*?)(?=\n##|\Z)", md, re.DOTALL)
-    if priority_section:
-        items = re.findall(r"\[ \]\s+(.+)", priority_section.group(1))
-        data["top_priorities"] = items[:6]
+    # Key Milestones 파싱 → upcoming_dates (YYYY-MM-DD: 이벤트 형식)
+    milestone_section = re.search(r"## Key Milestones\n(.*?)(?=\n##|\Z)", md, re.DOTALL)
+    if milestone_section:
+        items = re.findall(r"-\s+(\d{4})-(\d{2})-(\d{2}):\s+(.+)", milestone_section.group(1))
+        for _, month, day, event in items:
+            data["upcoming_dates"].append({
+                "date": f"{int(month)}/{int(day)}",
+                "event": event.strip()[:50]
+            })
+            if len(data["upcoming_dates"]) >= 6:
+                break
 
-    # 최근 완료 파싱
-    confirmed_section = re.search(r"최근 종결.*?\n(.*?)(?=\n##|\Z)", md, re.DOTALL)
+    # Active Workstreams → top_priorities
+    workstream_section = re.search(r"## Active Workstreams\n(.*?)(?=\n##|\Z)", md, re.DOTALL)
+    if workstream_section:
+        items = re.findall(r"-\s+[^:]+:\s+(.+)", workstream_section.group(1))
+        for item in items:
+            first = item.split(',')[0].strip()
+            if first:
+                data["top_priorities"].append(first[:60])
+            if len(data["top_priorities"]) >= 6:
+                break
+
+    # Confirmed/Changed Decisions → recent_confirmed (확정/완료 태그 항목)
+    confirmed_section = re.search(r"## Confirmed.*?\n(.*?)(?=\n##|\Z)", md, re.DOTALL)
     if confirmed_section:
-        items = re.findall(r"\*\s+(.+?)(?:\s+—|\n|$)", confirmed_section.group(1))
-        data["recent_confirmed"] = [i.strip() for i in items[:4]]
-
-    # 날짜 포함 임박 일정 파싱 (7/숫자 형식)
-    date_items = re.findall(r"[\*\-\[\] ]*(?:7/\d+|8/\d+)[^\n]*\n?", md)
-    seen = set()
-    for item in date_items:
-        clean = re.sub(r"[\*\[\] ]", "", item).strip()
-        if clean and clean not in seen and len(clean) > 5:
-            seen.add(clean)
-            m = re.search(r"((?:7|8)/\d+[^\s]*)\s+(.*)", clean)
-            if m:
-                data["upcoming_dates"].append({"date": m.group(1), "event": m.group(2)[:50]})
-        if len(data["upcoming_dates"]) >= 6:
-            break
+        items = re.findall(r"-\s+`(?:확정|완료)`:\s+(.+?)(?=\n-|\Z)", confirmed_section.group(1), re.DOTALL)
+        for item in items:
+            clean = item.strip().replace('\n', ' ')[:60]
+            if clean:
+                data["recent_confirmed"].append(clean)
+            if len(data["recent_confirmed"]) >= 4:
+                break
 
     return data
 
