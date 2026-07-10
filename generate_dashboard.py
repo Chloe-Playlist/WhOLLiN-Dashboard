@@ -1,6 +1,7 @@
 """
 WhOLLiN Dashboard Generator
 매일 Google Drive에서 CURRENT.md를 읽어 index.html을 생성합니다.
+히스토리 스냅샷을 history/ 폴더에 JSON으로 저장합니다.
 """
 
 import os
@@ -102,24 +103,36 @@ def parse_current(md):
 
     return data
 
+# ── 히스토리 스냅샷 저장
+def save_history(data, today_str):
+    os.makedirs("history", exist_ok=True)
+
+    # 오늘 스냅샷 저장
+    snapshot = {k: v for k, v in data.items() if k != "members_cover"}
+    snapshot["saved_at"] = today_str
+    with open(f"history/{today_str}.json", "w", encoding="utf-8") as f:
+        json.dump(snapshot, f, ensure_ascii=False, indent=2)
+
+    # 매니페스트 업데이트
+    manifest_path = "history/index.json"
+    if os.path.exists(manifest_path):
+        with open(manifest_path, "r", encoding="utf-8") as f:
+            manifest = json.load(f)
+    else:
+        manifest = []
+
+    if today_str not in manifest:
+        manifest.append(today_str)
+        manifest.sort(reverse=True)
+
+    with open(manifest_path, "w", encoding="utf-8") as f:
+        json.dump(manifest, f, ensure_ascii=False)
+
+    print(f"  히스토리 저장: history/{today_str}.json (총 {len(manifest)}일)")
+
 # ── HTML 생성
-def render_html(data):
+def render_html(data, today_str):
     now_kst = datetime.now(KST).strftime("%Y-%m-%d %H:%M KST")
-
-    priorities_html = "".join(
-        f'<div class="priority-item"><span class="dot"></span><span>{item}</span></div>'
-        for item in data["top_priorities"]
-    ) or '<div class="empty">항목 없음</div>'
-
-    confirmed_html = "".join(
-        f'<div class="confirmed-item"><span class="check">✓</span><span>{item}</span></div>'
-        for item in data["recent_confirmed"]
-    ) or '<div class="empty">항목 없음</div>'
-
-    dates_html = "".join(
-        f'<div class="date-item"><span class="date-tag">{d["date"]}</span><span>{d["event"]}</span></div>'
-        for d in data["upcoming_dates"]
-    ) or '<div class="empty">임박 일정 없음</div>'
 
     members_html = "".join(
         f'''<div class="member-card">
@@ -129,6 +142,16 @@ def render_html(data):
         </div>'''
         for m in data["members_cover"]
     )
+
+    # 오늘 데이터를 JS에 인라인으로 embed
+    today_json = json.dumps({
+        "d_day": data["d_day"],
+        "basis_date": data["basis_date"],
+        "debut_date": data["debut_date"],
+        "top_priorities": data["top_priorities"],
+        "recent_confirmed": data["recent_confirmed"],
+        "upcoming_dates": data["upcoming_dates"],
+    }, ensure_ascii=False)
 
     return f"""<!DOCTYPE html>
 <html lang="ko">
@@ -172,6 +195,43 @@ def render_html(data):
   }}
   .dday .num {{ font-size: 28px; font-weight: 800; line-height: 1; }}
   .dday .label {{ font-size: 10px; color: #888; margin-top: 2px; }}
+  .tabs {{
+    display: flex;
+    gap: 8px;
+    margin-bottom: 14px;
+  }}
+  .tab-btn {{
+    padding: 7px 18px;
+    border-radius: 20px;
+    border: 1px solid #ddd;
+    background: white;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    color: #888;
+  }}
+  .tab-btn.active {{
+    background: #111;
+    color: white;
+    border-color: #111;
+  }}
+  .tab-panel {{ display: none; }}
+  .tab-panel.active {{ display: block; }}
+  .history-bar {{
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 14px;
+  }}
+  .history-bar select {{
+    padding: 7px 12px;
+    border-radius: 8px;
+    border: 1px solid #ddd;
+    font-size: 13px;
+    background: white;
+    cursor: pointer;
+  }}
+  .history-bar label {{ font-size: 13px; color: #666; }}
   .grid {{ display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 14px; }}
   @media (max-width: 600px) {{ .grid {{ grid-template-columns: 1fr; }} }}
   .card {{
@@ -229,7 +289,7 @@ def render_html(data):
   .member-en {{ font-size: 10px; color: #aaa; margin-top: 2px; }}
   .member-cover {{ font-size: 10px; color: #666; margin-top: 5px; line-height: 1.4; }}
   .updated {{ text-align: right; font-size: 11px; color: #bbb; margin-top: 10px; }}
-  .full-col {{ grid-column: 1 / -1; }}
+  .loading {{ color: #bbb; font-size: 13px; padding: 20px 0; text-align: center; }}
 </style>
 </head>
 <body>
@@ -237,42 +297,125 @@ def render_html(data):
 <div class="header">
   <div>
     <h1>WhOLLiN</h1>
-    <div class="meta">데뷔 {data['debut_date']} · TIME SLEEP &nbsp;|&nbsp; 기준 {data['basis_date']}</div>
+    <div class="meta" id="header-meta">데뷔 {data['debut_date']} · TIME SLEEP &nbsp;|&nbsp; 기준 {data['basis_date']}</div>
   </div>
   <div class="dday">
     <div class="label">데뷔까지</div>
-    <div class="num">D-{data['d_day']}</div>
+    <div class="num" id="dday-num">D-{data['d_day']}</div>
   </div>
 </div>
 
-<div class="grid">
-  <div class="card">
-    <div class="card-title">🔴 최우선 과제</div>
-    {priorities_html}
-  </div>
-  <div class="card">
-    <div class="card-title">📅 임박 일정</div>
-    {dates_html}
-  </div>
-  <div class="card">
-    <div class="card-title">✅ 최근 완료</div>
-    {confirmed_html}
-  </div>
-  <div class="card">
+<div class="tabs">
+  <button class="tab-btn active" onclick="switchTab('today')">오늘</button>
+  <button class="tab-btn" onclick="switchTab('history')">히스토리</button>
+</div>
+
+<!-- 오늘 탭 -->
+<div id="tab-today" class="tab-panel active">
+  <div class="grid" id="today-grid"></div>
+  <div class="card" style="margin-bottom:14px">
     <div class="card-title">🎤 멤버 커버곡</div>
-    <div class="members-grid">
-      {members_html}
-    </div>
+    <div class="members-grid">{members_html}</div>
   </div>
+</div>
+
+<!-- 히스토리 탭 -->
+<div id="tab-history" class="tab-panel">
+  <div class="history-bar">
+    <label>날짜 선택</label>
+    <select id="history-select" onchange="loadHistory(this.value)">
+      <option value="">불러오는 중...</option>
+    </select>
+  </div>
+  <div id="history-grid" class="grid"></div>
 </div>
 
 <div class="updated">마지막 업데이트: {now_kst} · PLAYLIST WhOLLiN</div>
+
+<script>
+const TODAY_DATA = {today_json};
+const TODAY_STR = "{today_str}";
+
+function renderGrid(data, containerId) {{
+  const priorities = (data.top_priorities || []).map(i =>
+    `<div class="priority-item"><span class="dot"></span><span>${{i}}</span></div>`
+  ).join('') || '<div class="empty">항목 없음</div>';
+
+  const confirmed = (data.recent_confirmed || []).map(i =>
+    `<div class="confirmed-item"><span class="check">✓</span><span>${{i}}</span></div>`
+  ).join('') || '<div class="empty">항목 없음</div>';
+
+  const dates = (data.upcoming_dates || []).map(d =>
+    `<div class="date-item"><span class="date-tag">${{d.date}}</span><span>${{d.event}}</span></div>`
+  ).join('') || '<div class="empty">임박 일정 없음</div>';
+
+  document.getElementById(containerId).innerHTML = `
+    <div class="card">
+      <div class="card-title">🔴 최우선 과제</div>
+      ${{priorities}}
+    </div>
+    <div class="card">
+      <div class="card-title">📅 임박 일정</div>
+      ${{dates}}
+    </div>
+    <div class="card">
+      <div class="card-title">✅ 최근 완료</div>
+      ${{confirmed}}
+    </div>
+    <div class="card">
+      <div class="card-title">📋 기준일</div>
+      <div style="font-size:20px;font-weight:800;padding:10px 0">${{data.basis_date || '-'}}</div>
+      <div style="font-size:12px;color:#888">D-${{data.d_day}} · 데뷔 ${{data.debut_date}}</div>
+    </div>
+  `;
+}}
+
+function switchTab(tab) {{
+  document.querySelectorAll('.tab-btn').forEach((b, i) => {{
+    b.classList.toggle('active', (i === 0) === (tab === 'today'));
+  }});
+  document.getElementById('tab-today').classList.toggle('active', tab === 'today');
+  document.getElementById('tab-history').classList.toggle('active', tab === 'history');
+  if (tab === 'history') loadManifest();
+}}
+
+function loadManifest() {{
+  fetch('history/index.json?t=' + Date.now())
+    .then(r => r.json())
+    .then(dates => {{
+      const sel = document.getElementById('history-select');
+      sel.innerHTML = dates.map(d =>
+        `<option value="${{d}}">${{d}}</option>`
+      ).join('');
+      if (dates.length > 0) loadHistory(dates[0]);
+    }})
+    .catch(() => {{
+      document.getElementById('history-select').innerHTML = '<option>히스토리 없음</option>';
+    }});
+}}
+
+function loadHistory(date) {{
+  if (!date) return;
+  document.getElementById('history-grid').innerHTML = '<div class="loading">불러오는 중...</div>';
+  fetch(`history/${{date}}.json?t=` + Date.now())
+    .then(r => r.json())
+    .then(data => renderGrid(data, 'history-grid'))
+    .catch(() => {{
+      document.getElementById('history-grid').innerHTML = '<div class="empty">데이터를 불러올 수 없습니다.</div>';
+    }});
+}}
+
+// 오늘 탭 초기 렌더링
+renderGrid(TODAY_DATA, 'today-grid');
+</script>
 
 </body>
 </html>"""
 
 # ── 메인
 if __name__ == "__main__":
+    today_str = datetime.now(KST).strftime("%Y-%m-%d")
+
     print("Google Drive 연결 중...")
     service = get_drive_service()
 
@@ -283,8 +426,11 @@ if __name__ == "__main__":
     data = parse_current(md)
     print(f"  D-{data['d_day']} | 우선순위 {len(data['top_priorities'])}개 | 일정 {len(data['upcoming_dates'])}개")
 
+    print("히스토리 저장 중...")
+    save_history(data, today_str)
+
     print("HTML 생성 중...")
-    html = render_html(data)
+    html = render_html(data, today_str)
 
     with open("index.html", "w", encoding="utf-8") as f:
         f.write(html)
