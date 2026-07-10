@@ -40,6 +40,43 @@
   }
   .dday .num { font-size: 28px; font-weight: 800; line-height: 1; }
   .dday .label { font-size: 10px; color: #888; margin-top: 2px; }
+  .tabs {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 14px;
+  }
+  .tab-btn {
+    padding: 7px 18px;
+    border-radius: 20px;
+    border: 1px solid #ddd;
+    background: white;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    color: #888;
+  }
+  .tab-btn.active {
+    background: #111;
+    color: white;
+    border-color: #111;
+  }
+  .tab-panel { display: none; }
+  .tab-panel.active { display: block; }
+  .history-bar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 14px;
+  }
+  .history-bar select {
+    padding: 7px 12px;
+    border-radius: 8px;
+    border: 1px solid #ddd;
+    font-size: 13px;
+    background: white;
+    cursor: pointer;
+  }
+  .history-bar label { font-size: 13px; color: #666; }
   .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 14px; }
   @media (max-width: 600px) { .grid { grid-template-columns: 1fr; } }
   .card {
@@ -97,7 +134,7 @@
   .member-en { font-size: 10px; color: #aaa; margin-top: 2px; }
   .member-cover { font-size: 10px; color: #666; margin-top: 5px; line-height: 1.4; }
   .updated { text-align: right; font-size: 11px; color: #bbb; margin-top: 10px; }
-  .full-col { grid-column: 1 / -1; }
+  .loading { color: #bbb; font-size: 13px; padding: 20px 0; text-align: center; }
 </style>
 </head>
 <body>
@@ -105,31 +142,25 @@
 <div class="header">
   <div>
     <h1>WhOLLiN</h1>
-    <div class="meta">데뷔 2026-09-01 · TIME SLEEP &nbsp;|&nbsp; 기준 2026-07-09</div>
+    <div class="meta" id="header-meta">데뷔 2026-09-01 · TIME SLEEP &nbsp;|&nbsp; 기준 2026-07-09</div>
   </div>
   <div class="dday">
     <div class="label">데뷔까지</div>
-    <div class="num">D-54</div>
+    <div class="num" id="dday-num">D-54</div>
   </div>
 </div>
 
-<div class="grid">
-  <div class="card">
-    <div class="card-title">🔴 최우선 과제</div>
-    <div class="priority-item"><span class="dot"></span><span>YGP용 9/1 싱글 마스터 전달</span></div><div class="priority-item"><span class="dot"></span><span>패러블 계약서 마무리</span></div><div class="priority-item"><span class="dot"></span><span>캐릭터 티저 1차 편집</span></div><div class="priority-item"><span class="dot"></span><span>태이 8/6 1인 라이브 장소 결정</span></div><div class="priority-item"><span class="dot"></span><span>위버스 8/20 오픈 준비</span></div>
-  </div>
-  <div class="card">
-    <div class="card-title">📅 임박 일정</div>
-    <div class="date-item"><span class="date-tag">7/12</span><span>태이 8/6 1인 라이브 패러블 통보 마감</span></div><div class="date-item"><span class="date-tag">7/15</span><span>홀린 로고 완료 목표, 시오·태이 캐릭터 티저 1차 편집본</span></div><div class="date-item"><span class="date-tag">7/17</span><span>MV `HERO` 프리비즈 중간보고</span></div><div class="date-item"><span class="date-tag">7/22</span><span>이언·강우 커버 녹음</span></div><div class="date-item"><span class="date-tag">8/20</span><span>위버스 오픈, MV 러프 1차 가편본</span></div><div class="date-item"><span class="date-tag">8/27</span><span>데뷔 라이브 리허설용 패러블 스튜디오 확정</span></div>
-  </div>
-  <div class="card">
-    <div class="card-title">✅ 최근 완료</div>
-    <div class="confirmed-item"><span class="check">✓</span><span>Canvas 기준일자는 2026-07-09로 갱신됐고 최근 7/7 리드·커버기획·음악콘셉트 미팅 반영 상태다</span></div><div class="confirmed-item"><span class="check">✓</span><span>엔진 유니티 확정, 커버 5곡 확정, 정국영 비전속 파트너 협업 합의가 유지된다.</span></div><div class="confirmed-item"><span class="check">✓</span><span>릴리스 캘린더 v6는 7/20 공개 → 8/20 위버스 → 9/1 데뷔 → 11/3 쇼케이스로 유지된다.</span></div><div class="confirmed-item"><span class="check">✓</span><span>뮤비1 콘티아웃 공유, 5인 1차 모델링+성인 A컷 수급, 데뷔곡 믹스 최종 후 마스터 착수, 커버 2D 작</span></div>
-  </div>
-  <div class="card">
+<div class="tabs">
+  <button class="tab-btn active" onclick="switchTab('today')">오늘</button>
+  <button class="tab-btn" onclick="switchTab('history')">히스토리</button>
+</div>
+
+<!-- 오늘 탭 -->
+<div id="tab-today" class="tab-panel active">
+  <div class="grid" id="today-grid"></div>
+  <div class="card" style="margin-bottom:14px">
     <div class="card-title">🎤 멤버 커버곡</div>
-    <div class="members-grid">
-      <div class="member-card">
+    <div class="members-grid"><div class="member-card">
           <div class="member-name">시오</div>
           <div class="member-en">SiO</div>
           <div class="member-cover">태양 · 눈,코,입</div>
@@ -149,12 +180,99 @@
           <div class="member-name">강우</div>
           <div class="member-en">KANGWOO</div>
           <div class="member-cover">헤비 · BE I</div>
-        </div>
-    </div>
+        </div></div>
   </div>
 </div>
 
-<div class="updated">마지막 업데이트: 2026-07-10 13:56 KST · PLAYLIST WhOLLiN</div>
+<!-- 히스토리 탭 -->
+<div id="tab-history" class="tab-panel">
+  <div class="history-bar">
+    <label>날짜 선택</label>
+    <select id="history-select" onchange="loadHistory(this.value)">
+      <option value="">불러오는 중...</option>
+    </select>
+  </div>
+  <div id="history-grid" class="grid"></div>
+</div>
+
+<div class="updated">마지막 업데이트: 2026-07-10 14:07 KST · PLAYLIST WhOLLiN</div>
+
+<script>
+const TODAY_DATA = {"d_day": "54", "basis_date": "2026-07-09", "debut_date": "2026-09-01", "top_priorities": ["YGP용 9/1 싱글 마스터 전달", "패러블 계약서 마무리", "캐릭터 티저 1차 편집", "태이 8/6 1인 라이브 장소 결정", "위버스 8/20 오픈 준비"], "recent_confirmed": ["Canvas 기준일자는 2026-07-09로 갱신됐고 최근 7/7 리드·커버기획·음악콘셉트 미팅 반영 상태다", "엔진 유니티 확정, 커버 5곡 확정, 정국영 비전속 파트너 협업 합의가 유지된다.", "릴리스 캘린더 v6는 7/20 공개 → 8/20 위버스 → 9/1 데뷔 → 11/3 쇼케이스로 유지된다.", "뮤비1 콘티아웃 공유, 5인 1차 모델링+성인 A컷 수급, 데뷔곡 믹스 최종 후 마스터 착수, 커버 2D 작"], "upcoming_dates": [{"date": "7/12", "event": "태이 8/6 1인 라이브 패러블 통보 마감"}, {"date": "7/15", "event": "홀린 로고 완료 목표, 시오·태이 캐릭터 티저 1차 편집본"}, {"date": "7/17", "event": "MV `HERO` 프리비즈 중간보고"}, {"date": "7/22", "event": "이언·강우 커버 녹음"}, {"date": "8/20", "event": "위버스 오픈, MV 러프 1차 가편본"}, {"date": "8/27", "event": "데뷔 라이브 리허설용 패러블 스튜디오 확정"}]};
+const TODAY_STR = "2026-07-10";
+
+function renderGrid(data, containerId) {
+  const priorities = (data.top_priorities || []).map(i =>
+    `<div class="priority-item"><span class="dot"></span><span>${i}</span></div>`
+  ).join('') || '<div class="empty">항목 없음</div>';
+
+  const confirmed = (data.recent_confirmed || []).map(i =>
+    `<div class="confirmed-item"><span class="check">✓</span><span>${i}</span></div>`
+  ).join('') || '<div class="empty">항목 없음</div>';
+
+  const dates = (data.upcoming_dates || []).map(d =>
+    `<div class="date-item"><span class="date-tag">${d.date}</span><span>${d.event}</span></div>`
+  ).join('') || '<div class="empty">임박 일정 없음</div>';
+
+  document.getElementById(containerId).innerHTML = `
+    <div class="card">
+      <div class="card-title">🔴 최우선 과제</div>
+      ${priorities}
+    </div>
+    <div class="card">
+      <div class="card-title">📅 임박 일정</div>
+      ${dates}
+    </div>
+    <div class="card">
+      <div class="card-title">✅ 최근 완료</div>
+      ${confirmed}
+    </div>
+    <div class="card">
+      <div class="card-title">📋 기준일</div>
+      <div style="font-size:20px;font-weight:800;padding:10px 0">${data.basis_date || '-'}</div>
+      <div style="font-size:12px;color:#888">D-${data.d_day} · 데뷔 ${data.debut_date}</div>
+    </div>
+  `;
+}
+
+function switchTab(tab) {
+  document.querySelectorAll('.tab-btn').forEach((b, i) => {
+    b.classList.toggle('active', (i === 0) === (tab === 'today'));
+  });
+  document.getElementById('tab-today').classList.toggle('active', tab === 'today');
+  document.getElementById('tab-history').classList.toggle('active', tab === 'history');
+  if (tab === 'history') loadManifest();
+}
+
+function loadManifest() {
+  fetch('history/index.json?t=' + Date.now())
+    .then(r => r.json())
+    .then(dates => {
+      const sel = document.getElementById('history-select');
+      sel.innerHTML = dates.map(d =>
+        `<option value="${d}">${d}</option>`
+      ).join('');
+      if (dates.length > 0) loadHistory(dates[0]);
+    })
+    .catch(() => {
+      document.getElementById('history-select').innerHTML = '<option>히스토리 없음</option>';
+    });
+}
+
+function loadHistory(date) {
+  if (!date) return;
+  document.getElementById('history-grid').innerHTML = '<div class="loading">불러오는 중...</div>';
+  fetch(`history/${date}.json?t=` + Date.now())
+    .then(r => r.json())
+    .then(data => renderGrid(data, 'history-grid'))
+    .catch(() => {
+      document.getElementById('history-grid').innerHTML = '<div class="empty">데이터를 불러올 수 없습니다.</div>';
+    });
+}
+
+// 오늘 탭 초기 렌더링
+renderGrid(TODAY_DATA, 'today-grid');
+</script>
 
 </body>
 </html>
